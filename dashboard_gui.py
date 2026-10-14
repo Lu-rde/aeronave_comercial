@@ -10,7 +10,7 @@ class DashboardAero:
         self.fig, self.ax = plt.subplots(figsize=(10, 6))
         plt.subplots_adjust(left=0.25, bottom=0.25)
 
-        # Configuración de menú lateral (RadioButtons) y Slider inferior
+        # Menú lateral (RadioButtons) y Slider inferior
         ax_radio = plt.axes([0.02, 0.5, 0.18, 0.35])
         self.radio = RadioButtons(
             ax_radio, ("Aproximación", "Atmósfera", "Frenado")
@@ -43,11 +43,7 @@ class DashboardAero:
             x, h, "b.", alpha=0.3, label="Telemetría Radar ILS"
         )
         self.ax.plot(
-            x,
-            m * x + n,
-            "r-",
-            lw=2,
-            label=f"Senda Ajustada (γ={gamma:.2f}°)",
+            x, m * x + n, "r-", lw=2, label=f"Senda Ajustada (γ={gamma:.2f}°)"
         )
         self.ax.set_title(
             "Análisis de Aproximación: Senda ILS y Reparto de Cargas",
@@ -146,6 +142,7 @@ class DashboardAero:
         self.ax.fill_between(
             t, v * factor, color="blue", alpha=0.15, label="Distancia Recorrida"
         )
+
         self.ax.set_title(
             "Dinámica de Frenado y Distancia Consumida en Pista",
             fontsize=11,

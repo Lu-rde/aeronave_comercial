@@ -19,7 +19,7 @@ matriz_geometria = np.array(
 )
 x_ils = np.linspace(-10000, -500, 200)
 h_ils = 0.0524 * np.abs(x_ils) + 15.0 + np.random.normal(0, 8, 200)
-altitudes_viento = np.array([15])
+altitudes_viento = np.array([0.0, 20.0, 40.0, 60.0, 80.0, 100.0])
 velocidad_viento = np.array([2.1, 4.5, 7.2, 8.5, 12.0, 15.3])
 tiempo_frenado = np.linspace(0, 35, 1000)
 velocidad_frenado = (
