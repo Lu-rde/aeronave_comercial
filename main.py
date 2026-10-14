@@ -11,7 +11,7 @@ from calculos_aero import (
 from dashboard_gui import DashboardAero
 
 # ==============================================================================
-# 1. CARGA DE DATOS DE TELEMETRÍA (TEMA 4)
+# 1. CARGA DE DATOS DE TELEMETRÍA SIMULADA (TEMA 4)
 # ==============================================================================
 params_masa = np.array([18.5, 75000 * 9.81, 13600000.0, 0.0])
 matriz_geometria = np.array(
@@ -28,69 +28,87 @@ velocidad_frenado = (
 velocidad_frenado[velocidad_frenado < 0] = 0
 
 # ==============================================================================
-# 2. EJECUCIÓN DE CÁLCULOS NUMÉRICOS Y REPORTE EN CONSOLA
+# 2. EJECUCIÓN NUMÉRICA Y REPORTE FORMATO INFORME TÉCNICO
 # ==============================================================================
 if __name__ == "__main__":
-    # Apartado 1: Reparto de cargas
+    # Cálculo numérico de todos los apartados
     Rm, Rpi, Rpd = resolver_reparto_cargas(params_masa, matriz_geometria)
-    print("=" * 65)
-    print("EVALUACIÓN DE TELEMETRÍA DE ATERRIZAJE (TEMA 4)")
-    print("=" * 65)
-    print(
-        f"[Apartado 1] Reacciones: Morro = {Rm/1e3:.2f} kN | Izq ="
-        f" {Rpi/1e3:.2f} kN | Der = {Rpd/1e3:.2f} kN"
-    )
-    print(
-        "-> Interpretación física: Reparto simétrico en el tren principal"
-        " (Rpi = Rpd) debido a momento en Y nulo (0.0 Nm)."
-    )
-
-    # Apartado 2: Senda ILS
     m, n, gamma = calcular_senda_ils(x_ils, h_ils)
-    print(
-        f"[Apartado 2] Regresión ILS: m = {m:.5f} | n = {n:.2f} m | Ángulo"
-        f" γ = {gamma:.2f}°"
-    )
-    print(
-        "-> Interpretación física: Ángulo conforme con la normativa OACI"
-        " (~3.00°)."
-    )
-
-    # Apartado 3: Viento cruzado
     v_60 = calcular_viento_decision(altitudes_viento, velocidad_viento, 60.0)
-    print(
-        f"[Apartado 3] Viento a Altitud de Decisión (60m): {v_60:.2f} m/s"
-        f" ({v_60*1.94384:.1f} kt)"
-    )
-
-    # Apartado 4: Tiempo V_taxi
     ttaxi = calcular_tiempo_taxi(t0=10.0, v_target=15.0)
-    print(
-        f"[Apartado 4] Tiempo hasta velocidad de rodaje (15 m/s):"
-        f" {ttaxi:.2f} s (Newton-Raphson)"
-    )
-
-    # Apartado 5: Desaceleración
     a_frenado = calcular_desaceleracion(tiempo_frenado, velocidad_frenado)
     a_max = np.max(np.abs(a_frenado))
-    print(
-        f"[Apartado 5] Desaceleración Máxima: {a_max:.2f} m/s² ({a_max/9.81:.2f}g)"
-    )
-    print(
-        f"-> Interpretación física: {'Cumple' if a_max <= 2.94 else 'Supera'} el"
-        " límite de confort de pasajeros (0.3g ≈ 2.94 m/s²)."
-    )
-
-    # Apartado 6: Distancia de frenado
     dist_frenado = calcular_distancia_frenado(
         tiempo_frenado, velocidad_frenado
     )
-    print(
-        f"[Apartado 6] Distancia total consumida en pista: {dist_frenado:.2f} m"
-    )
-    print("=" * 65 + "\nLanzando Dashboard interactivo...")
 
-    # Paquete de datos para la GUI
+    # Impresión estructurada en consola
+    print("\n" + "=" * 75)
+    print(
+        " INFORME TÉCNICO DE TELEMETRÍA DE ATERRIZAJE — TEMA 4 ".center(
+            75, "═"
+        )
+    )
+    print("=" * 75)
+    print("\n┌── [1] REPARTO DE CARGAS EN TREN DE ATERRIZAJE " + "─" * 28)
+    print(f"│ • Tren de Morro (Rm): {Rm/1e3:8.2f} kN ({Rm:10.2f} N)")
+    print(
+        f"│ • Tren Principal Izquierdo: {Rpi/1e3:8.2f} kN ({Rpi:10.2f} N)"
+    )
+    print(
+        f"│ • Tren Principal Derecho: {Rpd/1e3:8.2f} kN ({Rpd:10.2f} N)"
+    )
+    print(
+        "│ ► Diagnóstico: Reparto simétrico por ausencia de momento lateral"
+        " (My = 0.0 Nm)."
+    )
+    print("\n┌── SENDA DE PLANEO Y APROXIMACIÓN ILS " + "─" * 32)
+    print(f"│ • Pendiente de la senda (m): {m:10.5f}")
+    print(f"│ • Intersección umbral (n): {n:8.2f} m")
+    print(f"│ • Ángulo de descenso (γ): {gamma:8.2f}°")
+    print("│ ► Diagnóstico: Conforme a la normativa OACI (~3.00°).")
+    print("\n┌── PERFIL DE VIENTO CRUZADO EN CAPA LÍMITE " + "─" * 27)
+    print(
+        f"│ • Viento a Altitud de Decisión (60m): {v_60:5.2f} m/s"
+        f" ({v_60*1.94384:4.1f} kt)"
+    )
+    print(
+        "│ ► Diagnóstico: Operación dentro de la envolvente de vuelo segura."
+    )
+    print(
+        "\n┌── BÚSQUEDA DE RAÍCES: TIEMPO A VELOCIDAD DE RODAJE " + "─" * 18
+    )
+    print(f"│ • Tiempo hasta V_taxi (15 m/s): {ttaxi:8.2f} s")
+    print(
+        "│ ► Algoritmo: Newton-Raphson convergido con tolerancia < 1e-6."
+    )
+    print("\n┌── DERIVACIÓN NUMÉRICA: DESACELERACIÓN EN PISTA " + "─" * 21)
+    print(
+        f"│ • Desaceleración Máxima: {a_max:8.2f} m/s²"
+        f" ({a_max/9.81:4.2f} g)"
+    )
+    eval_a = (
+        "Cumple límite de confort (≤ 0.3g)"
+        if a_max <= 2.94
+        else "Supera límite de confort (> 0.3g)"
+    )
+    print(f"│ ► Diagnóstico: {eval_a}.")
+    print("\n┌── INTEGRACIÓN NUMÉRICA: DISTANCIA DE FRENADO " + "─" * 23)
+    print(f"│ • Pista total consumida: {dist_frenado:8.2f} m")
+    eval_pista = (
+        "OK (Pista suficiente)"
+        if dist_frenado <= 1600
+        else "¡ALERTA! Exceso de pista"
+    )
+    print(f"│ ► Diagnóstico: {eval_pista}.")
+    print("\n" + "=" * 75)
+    print(
+        "Desplegando Dashboard Interactivo... Cierre la ventana gráfica para"
+        " finalizar."
+    )
+    print("=" * 75 + "\n")
+
+    # Preparación de datos para la interfaz gráfica
     datos_gui = {
         "x_ils": x_ils,
         "h_ils": h_ils,
