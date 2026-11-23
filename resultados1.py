@@ -39,7 +39,7 @@ reporte = resolver_con_consenso(matriz_geometria, b, tol_disp=1e-2)
 x = reporte["x_final"]  # Solución final [R_m, R_pi, R_pd] lista para cálculos posteriores
 
 # ==============================================================================
-# SALIDA LIMPIA
+# APARTADO 1: SISTEMAS LINEALES (FUERZAS DE REACCIÓN EN LOS TRENES DE ATERRIZAJE)
 # ==============================================================================
 print("=============================================================")
 print("--- FUERZAS DE REACCIÓN EN LOS TRENES DE ATERRIZAJE ---")
@@ -47,3 +47,20 @@ print("=============================================================")
 print(f"Tren de Morro (R_m):              {x[0]/1000:.2f} kN ({x[0]:.2f} N)")
 print(f"Tren Principal Izquierdo (R_pi): {x[1]/1000:.2f} kN ({x[1]:.2f} N)")
 print(f"Tren Principal Derecho (R_pd):   {x[2]/1000:.2f} kN ({x[2]:.2f} N)")
+
+from math_utils import ajustar_senda_consenso
+
+# ==============================================================================
+# APARTADO 2: REGRESIÓN LINEAL (CALIBRACIÓN DE LA SENDA DE PLANEOS / ILS)
+# ==============================================================================
+# Todo el ajuste por ambos métodos y el control de dispersión van por dentro
+m_ils, n_ils, gamma_ils_deg, info_ils = ajustar_senda_consenso(x_ils, h_ils)
+
+# Recta ajustada h_ajuste = m * x_ils + n (vectorizada con NumPy, sin bucles)
+h_ils_ajuste = m_ils * x_ils + n_ils
+
+print("=============================================================")
+print("--- REGRESIÓN LINEAL ILS (SENDA DE PLANEO) ---")
+print("=============================================================")
+print(f"Ecuación ajustada: h = {m_ils:.6f} * x + {n_ils:.2f} m")
+print(f"Ángulo de descenso (gamma): {gamma_ils_deg:.2f}° (referencia OACI ~ 3.00°)")

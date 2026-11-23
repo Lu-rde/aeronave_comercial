@@ -185,3 +185,75 @@ def resolver_con_consenso(A, b, tol_disp=1e-3, incluir_iterativos_si_convergen=T
         "dentro_umbral": dentro_umbral,
         "criterio": criterio,
     }
+
+# APARTADO 2
+
+def my_regression(x, y):
+    """
+    Ajuste lineal por mínimos cuadrados y = m*x + n mediante ecuaciones normales
+    matriciales: theta = (X^T @ X)^(-1) @ (X^T @ y), donde X = [x, 1].
+    Devuelve: (m, n)
+    """
+    x = np.asarray(x, dtype=float).ravel()  # Vector columna implícito de variable independiente (N,)
+    y = np.asarray(y, dtype=float).ravel()  # Vector de variable dependiente (N,)
+
+    # Construimos la matriz de diseño X de tamaño (N, 2): primera columna x, segunda columna de unos
+    X = np.column_stack((x, np.ones_like(x)))
+
+    # Ecuaciones normales: X^T @ X @ theta = X^T @ y -> resolvemos con np.linalg.solve (más estable que inv)
+    XtX = X.T @ X
+    Xty = X.T @ y
+    theta = np.linalg.solve(XtX, Xty)
+
+    m = float(theta[0])  # Pendiente de la recta ajustada
+    n = float(theta[1])  # Ordenada en el origen
+    return m, n
+
+
+def regression_numpy(x, y):
+    """
+    Ajuste lineal por mínimos cuadrados y = m*x + n utilizando np.polyfit de grado 1.
+    Devuelve: (m, n)
+    """
+    x = np.asarray(x, dtype=float).ravel()
+    y = np.asarray(y, dtype=float).ravel()
+
+    # np.polyfit(x, y, 1) devuelve [pendiente, ordenada_en_el_origen]
+    m, n = np.polyfit(x, y, 1)
+    return float(m), float(n)
+
+
+def ajustar_senda_consenso(x, y, tol_disp=1e-9):
+    """
+    Calcula la regresión lineal con my_regression y regression_numpy, comprueba la
+    dispersión entre ambos métodos y devuelve (m, n, gamma_deg, info).
+    """
+    m_my, n_my = my_regression(x, y)
+    m_np, n_np = regression_numpy(x, y)
+
+    # Dispersión máxima entre pendientes y ordenadas de ambos métodos
+    disp_m = abs(m_my - m_np)
+    disp_n = abs(n_my - n_np)
+    dispersion = max(disp_m, disp_n)
+
+    if dispersion <= tol_disp:
+        m_final = 0.5 * (m_my + m_np)
+        n_final = 0.5 * (n_my + n_np)
+        dentro_umbral = True
+    else:
+        # Respaldo directo con el ajuste de NumPy si supera la tolerancia
+        m_final, n_final = m_np, n_np
+        dentro_umbral = False
+
+    # Ángulo de descenso en grados: gamma = arctan(m)
+    gamma_deg = float(np.degrees(np.arctan(m_final)))
+
+    info = {
+        "m_my_regression": m_my,
+        "n_my_regression": n_my,
+        "m_numpy": m_np,
+        "n_numpy": n_np,
+        "dispersion": dispersion,
+        "dentro_umbral": dentro_umbral,
+    }
+    return m_final, n_final, gamma_deg, info
