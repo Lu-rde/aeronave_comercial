@@ -1,6 +1,6 @@
 # Tema 4: Senda de Aterrizaje y Dinámica de Frenado de una Aeronave Comercial
 
-**Participantes:** Lucía Rodríguez Esteban, Paula Pulido Heras, Alba Refojo Reyes, Lidia Pique Marchan, Paula Perez Terriza
+**Participantes:** Lucía Rodríguez Esteban, Paula Pulido Heras, Alba Refojos Reyes, Lidia Pique Marchan, Paula Perez Terriza
 
 **Asignatura:** Programación / Cálculo I — Grado en Ingeniería Aeroespacial  
 
