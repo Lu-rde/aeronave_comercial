@@ -1,6 +1,9 @@
 import numpy as np
 import scipy.linalg as la
 
+# ==============================================================================
+# APARTADO 1: SISTEMAS LINEALES
+# ==============================================================================
 
 def my_Gauss(A, b):
     """Resuelve el sistema lineal Ax = b mediante eliminación gaussiana con pivoteo parcial y sustitución regresiva."""
@@ -185,8 +188,9 @@ def resolver_con_consenso(A, b, tol_disp=1e-3, incluir_iterativos_si_convergen=T
         "dentro_umbral": dentro_umbral,
         "criterio": criterio,
     }
-
-# APARTADO 2
+# ==============================================================================
+# APARTADO 2 : REGRESIÓN LINEAL
+# ==============================================================================
 
 def my_regression(x, y):
     """
@@ -257,3 +261,111 @@ def ajustar_senda_consenso(x, y, tol_disp=1e-9):
         "dentro_umbral": dentro_umbral,
     }
     return m_final, n_final, gamma_deg, info
+
+# ==============================================================================
+# APARTADO 3: INTERPOLACIÓN 1D (NUMPY, VANDERMONDE Y LAGRANGE)
+# ==============================================================================
+
+def interp_numpy(x_tab, y_tab, x_eval):
+    """
+    Interpolación lineal 1D por tramos utilizando np.interp.
+    """
+    x_tab = np.asarray(x_tab, dtype=float).ravel()
+    y_tab = np.asarray(y_tab, dtype=float).ravel()
+    # np.interp funciona tanto para un escalar (ej. 60.0) como para un array de puntos
+    return np.interp(x_eval, x_tab, y_tab)
+
+
+def interp_vandermonde(x_tab, y_tab, x_eval):
+    """
+    Interpolación polinómica global mediante matriz de Vandermonde (totalmente vectorizada).
+    Resuelve V @ c = y para obtener los coeficientes del polinomio de grado N-1 y lo evalúa en x_eval.
+    """
+    x_tab = np.asarray(x_tab, dtype=float).ravel()
+    y_tab = np.asarray(y_tab, dtype=float).ravel()
+    escalar = np.ndim(x_eval) == 0  # Recordamos si la entrada era un único número o un array
+    x_q = np.atleast_1d(np.asarray(x_eval, dtype=float))
+
+    # Construimos la matriz de Vandermonde V (N x N) con potencias crecientes: [1, x, x^2, ..., x^(N-1)]
+    V = np.vander(x_tab, increasing=True)
+
+    # Resolvemos el sistema lineal V @ c = y para obtener los coeficientes del polinomio interpolador
+    coeficientes = np.linalg.solve(V, y_tab)
+
+    # Evaluamos el polinomio en x_q de forma matricial: V_eval @ coeficientes
+    V_eval = np.vander(x_q, N=len(x_tab), increasing=True)
+    y_q = V_eval @ coeficientes
+
+    return float(y_q[0]) if escalar else y_q
+
+
+def interp_lagrange(x_tab, y_tab, x_eval):
+    """
+    Interpolación polinómica global de Lagrange de forma 100 % vectorizada (sin bucles for).
+    Calcula los polinomios base L_i(x) mediante broadcasting de NumPy y combina sum(y_i * L_i(x)).
+    """
+    x_tab = np.asarray(x_tab, dtype=float).ravel()
+    y_tab = np.asarray(y_tab, dtype=float).ravel()
+    escalar = np.ndim(x_eval) == 0
+    x_q = np.atleast_1d(np.asarray(x_eval, dtype=float))  # Forma (M,)
+    N = len(x_tab)
+
+    # Denominadores de cada base L_i: prod_{j != i} (x_i - x_j)
+    # Matriz de diferencias entre nodos (N x N): diff_nodos[i, j] = x_tab[i] - x_tab[j]
+    diff_nodos = x_tab[:, None] - x_tab[None, :]
+    # Ponemos 1.0 en la diagonal (j == i) para que el producto por filas ignore el término nulo
+    np.fill_diagonal(diff_nodos, 1.0)
+    denominadores = np.prod(diff_nodos, axis=1)  # Forma (N,)
+
+    # Numeradores para cada punto de evaluación x_q[m] y cada base i: prod_{j != i} (x_q[m] - x_tab[j])
+    # diff_eval tiene forma (M, N): diff_eval[m, j] = x_q[m] - x_tab[j]
+    diff_eval = x_q[:, None] - x_tab[None, :]
+    # Replicamos a (M, N, N) donde el eje 1 corresponde a i y el eje 2 a j
+    numeradores_mat = np.broadcast_to(diff_eval[:, None, :], (len(x_q), N, N)).copy()
+    # En la diagonal (i == j) ponemos 1.0 para excluir el factor (x_q - x_i) del producto
+    idx = np.arange(N)
+    numeradores_mat[:, idx, idx] = 1.0
+    numeradores = np.prod(numeradores_mat, axis=2)  # Forma (M, N)
+
+    # Polinomios base de Lagrange L_i(x_q) de forma (M, N)
+    L = numeradores / denominadores[None, :]
+
+    # Combinación lineal: P(x_q) = sum_i y_tab[i] * L_i(x_q)
+    y_q = L @ y_tab
+
+    return float(y_q[0]) if escalar else y_q
+
+
+def interpolar_con_consenso(x_tab, y_tab, x_eval, tol_disp=0.5):
+    """
+    Evalúa la interpolación en x_eval mediante NumPy (lineal), Vandermonde y Lagrange.
+    Calcula por dentro la dispersión entre métodos y devuelve (valor_final, info).
+    """
+    val_np = interp_numpy(x_tab, y_tab, x_eval)
+    val_van = interp_vandermonde(x_tab, y_tab, x_eval)
+    val_lag = interp_lagrange(x_tab, y_tab, x_eval)
+
+    # Apilamos los tres resultados para medir la dispersión máxima entre métodos
+    todos = np.vstack([np.atleast_1d(val_np), np.atleast_1d(val_van), np.atleast_1d(val_lag)])
+    dispersion = float(np.max(np.ptp(todos, axis=0)))
+
+    if dispersion <= tol_disp:
+        # Si los tres métodos coinciden dentro del margen, devolvemos la media
+        val_final = np.mean(todos, axis=0)
+        if np.ndim(x_eval) == 0:
+            val_final = float(val_final[0])
+        dentro_umbral = True
+    else:
+        # Si el polinomio global oscila respecto a la interpolación lineal, priorizamos
+        # la interpolación lineal de NumPy que pide el enunciado
+        val_final = val_np
+        dentro_umbral = False
+
+    info = {
+        "numpy": val_np,
+        "vandermonde": val_van,
+        "lagrange": val_lag,
+        "dispersion": dispersion,
+        "dentro_umbral": dentro_umbral,
+    }
+    return val_final, info

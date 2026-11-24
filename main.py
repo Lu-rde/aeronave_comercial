@@ -1,128 +1,90 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from calculos_aero import (
-    calcular_desaceleracion,
-    calcular_distancia_frenado,
-    calcular_senda_ils,
-    calcular_tiempo_taxi,
-    calcular_viento_decision,
-    resolver_reparto_cargas,
-)
-from dashboard_gui import DashboardAero
+from math_utils import resolver_con_consenso
+from physics import calcular_viento_altura_decision
 
 # ==============================================================================
-# 1. CARGA DE DATOS DE TELEMETRÍA SIMULADA (TEMA 4)
+# CARGA DE DATOS DE TELEMETRÍA (TEMA 4)
 # ==============================================================================
+# Parámetros de masa y momentos: [x_cg (m), peso_total (N), momento_X (N·m), momento_Y (N·m)]
 params_masa = np.array([18.5, 75000 * 9.81, 13600000.0, 0.0])
-matriz_geometria = np.array(
-    [[1.0, 1.0, 1.0], [3.2, 20.1, 20.1], [0.0, -4.5, 4.5]]
-)
+
+# Matriz de coeficientes del sistema lineal para los 3 apoyos del tren de aterrizaje:
+# columnas -> [tren_morro, tren_principal_izq, tren_principal_der]
+matriz_geometria = np.array([
+    [1.0, 1.0, 1.0],      # Suma de fuerzas verticales = peso total
+    [3.2, 20.1, 20.1],    # Brazos de palanca en eje X (momentos de cabeceo)
+    [0.0, -4.5, 4.5],     # Brazos de palanca en eje Y (momentos de alabeo)
+])
+
+# Datos para Regresión Lineal (Telemetría ILS: distancia a pista vs. altitud con ruido)
 x_ils = np.linspace(-10000, -500, 200)
 h_ils = 0.0524 * np.abs(x_ils) + 15.0 + np.random.normal(0, 8, 200)
-altitudes_viento = np.array([0.0, 20.0, 40.0, 60.0, 80.0, 100.0])
-velocidad_viento = np.array([2.1, 4.5, 7.2, 8.5, 12.0, 15.3])
-tiempo_frenado = np.linspace(0, 35, 1000)
-velocidad_frenado = (
-    70.0 * np.exp(-0.04 * tiempo_frenado) - 1.2 * tiempo_frenado
-)
+
+# Datos para Interpolación 1D (perfil vertical de viento en la capa límite)
+altitudes_viento = np.array([0, 50, 100, 200, 500, 1000])  # [m]
+velocidad_viento = np.array([2.1, 4.5, 7.2, 8.5, 12.0, 15.3])  # [m/s]
+
+# Datos para Derivación e Integración (perfil de velocidad durante el frenado)
+tiempo_frenado = np.linspace(0, 35, 1000)  # [s]
+velocidad_frenado = 70.0 * np.exp(-0.04 * tiempo_frenado) - 1.2 * tiempo_frenado  # [m/s]
 velocidad_frenado[velocidad_frenado < 0] = 0
 
+# Vector de cargas estáticas b: [Peso_total, Momento_X, Momento_Y]
+b = params_masa[1:]
+
 # ==============================================================================
-# 2. EJECUCIÓN NUMÉRICA Y REPORTE FORMATO INFORME TÉCNICO
+# CÁLCULO INTERNO (MÉTODOS, CONVERGENCIA Y MARGEN DE DISPERSIÓN)
 # ==============================================================================
-if __name__ == "__main__":
-    # Cálculo numérico de todos los apartados
-    Rm, Rpi, Rpd = resolver_reparto_cargas(params_masa, matriz_geometria)
-    m, n, gamma = calcular_senda_ils(x_ils, h_ils)
-    v_60 = calcular_viento_decision(altitudes_viento, velocidad_viento, 60.0)
-    ttaxi = calcular_tiempo_taxi(t0=10.0, v_target=15.0)
-    a_frenado = calcular_desaceleracion(tiempo_frenado, velocidad_frenado)
-    a_max = np.max(np.abs(a_frenado))
-    dist_frenado = calcular_distancia_frenado(
-        tiempo_frenado, velocidad_frenado
-    )
+# Todo el cálculo, control de convergencia y comprobación de dispersión ocurre aquí dentro
+reporte = resolver_con_consenso(matriz_geometria, b, tol_disp=1e-2)
+x = reporte["x_final"]  # Solución final [R_m, R_pi, R_pd] lista para cálculos posteriores
 
-    # Impresión estructurada en consola
-    print("\n" + "=" * 75)
-    print(
-        " INFORME TÉCNICO DE TELEMETRÍA DE ATERRIZAJE — TEMA 4 ".center(
-            75, "═"
-        )
-    )
-    print("=" * 75)
-    print("\n┌── [1] REPARTO DE CARGAS EN TREN DE ATERRIZAJE " + "─" * 28)
-    print(f"│ • Tren de Morro (Rm): {Rm/1e3:8.2f} kN ({Rm:10.2f} N)")
-    print(
-        f"│ • Tren Principal Izquierdo: {Rpi/1e3:8.2f} kN ({Rpi:10.2f} N)"
-    )
-    print(
-        f"│ • Tren Principal Derecho: {Rpd/1e3:8.2f} kN ({Rpd:10.2f} N)"
-    )
-    print(
-        "│ ► Diagnóstico: Reparto simétrico por ausencia de momento lateral"
-        " (My = 0.0 Nm)."
-    )
-    print("\n┌── SENDA DE PLANEO Y APROXIMACIÓN ILS " + "─" * 32)
-    print(f"│ • Pendiente de la senda (m): {m:10.5f}")
-    print(f"│ • Intersección umbral (n): {n:8.2f} m")
-    print(f"│ • Ángulo de descenso (γ): {gamma:8.2f}°")
-    print("│ ► Diagnóstico: Conforme a la normativa OACI (~3.00°).")
-    print("\n┌── PERFIL DE VIENTO CRUZADO EN CAPA LÍMITE " + "─" * 27)
-    print(
-        f"│ • Viento a Altitud de Decisión (60m): {v_60:5.2f} m/s"
-        f" ({v_60*1.94384:4.1f} kt)"
-    )
-    print(
-        "│ ► Diagnóstico: Operación dentro de la envolvente de vuelo segura."
-    )
-    print(
-        "\n┌── BÚSQUEDA DE RAÍCES: TIEMPO A VELOCIDAD DE RODAJE " + "─" * 18
-    )
-    print(f"│ • Tiempo hasta V_taxi (15 m/s): {ttaxi:8.2f} s")
-    print(
-        "│ ► Algoritmo: Newton-Raphson convergido con tolerancia < 1e-6."
-    )
-    print("\n┌── DERIVACIÓN NUMÉRICA: DESACELERACIÓN EN PISTA " + "─" * 21)
-    print(
-        f"│ • Desaceleración Máxima: {a_max:8.2f} m/s²"
-        f" ({a_max/9.81:4.2f} g)"
-    )
-    eval_a = (
-        "Cumple límite de confort (≤ 0.3g)"
-        if a_max <= 2.94
-        else "Supera límite de confort (> 0.3g)"
-    )
-    print(f"│ ► Diagnóstico: {eval_a}.")
-    print("\n┌── INTEGRACIÓN NUMÉRICA: DISTANCIA DE FRENADO " + "─" * 23)
-    print(f"│ • Pista total consumida: {dist_frenado:8.2f} m")
-    eval_pista = (
-        "OK (Pista suficiente)"
-        if dist_frenado <= 1600
-        else "¡ALERTA! Exceso de pista"
-    )
-    print(f"│ ► Diagnóstico: {eval_pista}.")
-    print("\n" + "=" * 75)
-    print(
-        "Desplegando Dashboard Interactivo... Cierre la ventana gráfica para"
-        " finalizar."
-    )
-    print("=" * 75 + "\n")
+# ==============================================================================
+# APARTADO 1: SISTEMAS LINEALES (FUERZAS DE REACCIÓN EN LOS TRENES DE ATERRIZAJE)
+# ==============================================================================
+print("=============================================================")
+print("--- FUERZAS DE REACCIÓN EN LOS TRENES DE ATERRIZAJE ---")
+print("=============================================================")
+print(f"Tren de Morro (R_m):              {x[0]/1000:.2f} kN ({x[0]:.2f} N)")
+print(f"Tren Principal Izquierdo (R_pi): {x[1]/1000:.2f} kN ({x[1]:.2f} N)")
+print(f"Tren Principal Derecho (R_pd):   {x[2]/1000:.2f} kN ({x[2]:.2f} N)")
 
-    # Preparación de datos para la interfaz gráfica
-    datos_gui = {
-        "x_ils": x_ils,
-        "h_ils": h_ils,
-        "ils_results": (m, n, gamma),
-        "reacciones": (Rm, Rpi, Rpd),
-        "altitudes_viento": altitudes_viento,
-        "velocidad_viento": velocidad_viento,
-        "viento_60m": v_60,
-        "t_frenado": tiempo_frenado,
-        "v_frenado": velocidad_frenado,
-        "a_frenado": a_frenado,
-        "ttaxi": ttaxi,
-        "dist_frenado": dist_frenado,
-    }
+from math_utils import ajustar_senda_consenso
 
-    app = DashboardAero(datos_gui)
-    plt.show()
+# ==============================================================================
+# APARTADO 2: REGRESIÓN LINEAL (CALIBRACIÓN DE LA SENDA DE PLANEOS / ILS)
+# ==============================================================================
+# Todo el ajuste por ambos métodos y el control de dispersión van por dentro
+m_ils, n_ils, gamma_ils_deg, info_ils = ajustar_senda_consenso(x_ils, h_ils)
+
+# Recta ajustada h_ajuste = m * x_ils + n (vectorizada con NumPy, sin bucles)
+h_ils_ajuste = m_ils * x_ils + n_ils
+
+print("=============================================================")
+print("--- REGRESIÓN LINEAL ILS (SENDA DE PLANEO) ---")
+print("=============================================================")
+print(f"Ecuación ajustada: h = {m_ils:.6f} * x + {n_ils:.2f} m")
+print(f"Ángulo de descenso (gamma): {gamma_ils_deg:.2f}° (referencia OACI ~ 3.00°)")
+
+# ==============================================================================
+# DATOS DE PARTIDA (CAPA LÍMITE ATMOSFÉRICA)[cite: 11]
+# ==============================================================================
+altitudes_viento = np.array([0, 50, 100, 200, 500, 1000])  # [m][cite: 11]
+velocidad_viento = np.array([2.1, 4.5, 7.2, 8.5, 12.0, 15.3])  # [m/s][cite: 11]
+
+# ==============================================================================
+# APARTADO 3: INTERPOLACIÓN 1D (VIENTO EN ALTURA DE DECISIÓN = 60 m)[cite: 12]
+# ==============================================================================
+altitud_decision = 60.0  # [m][cite: 12]
+v_viento_dh, info_viento = calcular_viento_altura_decision(
+    altitudes_viento,
+    velocidad_viento,
+    altitud_decision,
+)
+
+print("=============================================================")
+print("--- INTERPOLACIÓN 1D: VIENTO EN ALTURA DE DECISIÓN ---")
+print("=============================================================")
+print(f"Altitud de decisión (DH): {altitud_decision:.1f} m")
+print(f"Velocidad del viento cruzado estimada: {v_viento_dh:.2f} m/s ({v_viento_dh * 1.94384:.2f} kt)")
+print("Interpretación: El viento cruzado a 60 m se sitúa dentro de los márgenes operativos seguros de aproximación.")
