@@ -2,6 +2,7 @@ import numpy as np
 from math_utils import resolver_con_consenso
 from physics import calcular_viento_altura_decision
 from physics import calcular_distancia_frenado
+from physics import calcular_perfil_desaceleracion
 
 # ==============================================================================
 # CARGA DE DATOS DE TELEMETRÍA (TEMA 4)
@@ -109,4 +110,33 @@ print("=============================================================")
 print(f"Distancia de frenado total (S): {distancia_pista_m:.2f} m ({distancia_pista_m / 1000:.2f} km)")
 print("Interpretación: Distancia de roll-out coherente con una aeronave comercial que frena desde ~70 m/s.")
 
-i
+
+# ==============================================================================
+# DATOS DE PARTIDA: DINÁMICA DE FRENADO
+# ==============================================================================
+tiempo_frenado = np.linspace(0, 35, 1000)  # [s]
+velocidad_frenado = 70.0 * np.exp(-0.04 * tiempo_frenado) - 1.2 * tiempo_frenado  # [m/s]
+velocidad_frenado[velocidad_frenado < 0] = 0
+
+# ==============================================================================
+# APARTADO 5: DERIVACIÓN NUMÉRICA 1D (PERFIL DE DESACELERACIÓN)
+# ==============================================================================
+# Los tres métodos de derivación y el control de dispersión van por dentro
+aceleracion_frenado, info_desacel = calcular_perfil_desaceleracion(
+    tiempo_frenado,
+    velocidad_frenado,
+)
+
+desacel_max = info_desacel["desaceleracion_max"]
+lim_confort = info_desacel["limite_confort"]
+
+print("=============================================================")
+print("--- DERIVACIÓN NUMÉRICA 1D: PERFIL DE DESACELERACIÓN ---")
+print("=============================================================")
+print(f"Desaceleración máxima alcanzada: {desacel_max:.2f} m/s² ({desacel_max / 9.81:.2f} g)")
+print(f"Límite de confort pasajeros:    {lim_confort:.2f} m/s² (0.30 g)")
+
+if info_desacel["supera_confort"]:
+    print("Interpretación: Se supera ligeramente el umbral de 0.3g en el toque inicial, aunque dentro de márgenes seguros de frenado.")
+else:
+    print("Interpretación: La desaceleración se mantiene dentro del límite de confort de 0.3g durante toda la carrera de frenado.")

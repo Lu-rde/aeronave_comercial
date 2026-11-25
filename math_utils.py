@@ -472,3 +472,96 @@ def integrar_con_consenso(y, x, tol_disp=1e-2):
     }
     return val_final, info
 
+# ==============================================================================
+# APARTADO 5: DERIVACIÓN NUMÉRICA 1D (CENTRALES, 3 PUNTOS EXTREMOS Y NUMPY)
+# ==============================================================================
+
+def my_derivada_central(y, x):
+    """
+    Derivada numérica dy/dx 100 % vectorizada usando diferencias finitas centrales
+    de 3 puntos (orden O(h^2)) en los nodos interiores, y esquemas de 3 puntos
+    adelantados/retrasados en los extremos izquierdo y derecho.
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+
+    if len(x) < 3 or len(x) != len(y):
+        raise ValueError("x e y deben tener la misma longitud y al menos 3 puntos.")
+
+    h = float(np.mean(np.diff(x)))  # Paso temporal uniforme dt
+    dy = np.empty_like(y)
+
+    # Puntos interiores (1 a N-2): diferencia finita central de 3 puntos
+    dy[1:-1] = (y[2:] - y[:-2]) / (2.0 * h)
+
+    # Extremo izquierdo (índice 0): fórmula adelantada de 3 puntos O(h^2)
+    dy[0] = (-3.0 * y[0] + 4.0 * y[1] - y[2]) / (2.0 * h)
+
+    # Extremo derecho (índice -1): fórmula retrasada de 3 puntos O(h^2)
+    dy[-1] = (3.0 * y[-1] - 4.0 * y[-2] + y[-3]) / (2.0 * h)
+
+    return dy
+
+
+def my_derivada_tres_puntos_extremos(y, x):
+    """
+    Derivada numérica dy/dx 100 % vectorizada usando exclusivamente esquemas
+    de 3 puntos adelantados (progresivos) y 3 puntos retrasados (regresivos) O(h^2).
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+
+    if len(x) < 3 or len(x) != len(y):
+        raise ValueError("x e y deben tener la misma longitud y al menos 3 puntos.")
+
+    h = float(np.mean(np.diff(x)))
+    dy = np.empty_like(y)
+
+    # Nodos [0 .. N-3]: fórmula de 3 puntos adelantados -> (-3*y_i + 4*y_{i+1} - y_{i+2}) / (2h)
+    dy[:-2] = (-3.0 * y[:-2] + 4.0 * y[1:-1] - y[2:]) / (2.0 * h)
+
+    # Últimos dos nodos [N-2, N-1]: fórmula de 3 puntos retrasados -> (3*y_i - 4*y_{i-1} + y_{i-2}) / (2h)
+    dy[-2:] = (3.0 * y[-2:] - 4.0 * y[-3:-1] + y[-4:-2]) / (2.0 * h)
+
+    return dy
+
+
+def derivada_numpy(y, x):
+    """
+    Derivada numérica dy/dx utilizando np.gradient.
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+    return np.gradient(y, x)
+
+
+def derivar_con_consenso(y, x, tol_disp=1e-2):
+    """
+    Calcula la derivada dy/dx con tres métodos (centrales, 3 puntos adelantados/retrasados
+    y NumPy), evalúa la dispersión máxima por dentro y devuelve (dy_final, info).
+    """
+    dy_cent = my_derivada_central(y, x)
+    dy_3pts = my_derivada_tres_puntos_extremos(y, x)
+    dy_np = derivada_numpy(y, x)
+
+    todos = np.vstack([dy_cent, dy_3pts, dy_np])
+    # Dispersión máxima entre los 3 métodos a lo largo de todo el perfil
+    dispersion = float(np.max(np.ptp(todos, axis=0)))
+
+    if dispersion <= tol_disp:
+        dy_final = np.mean(todos, axis=0)
+        dentro_umbral = True
+    else:
+        # En el punto donde la velocidad se corta a 0 (esquina no derivable), los esquemas
+        # unilaterales pueden discrepar ligeramente del central; priorizamos el central
+        dy_final = dy_cent
+        dentro_umbral = False
+
+    info = {
+        "centrales": dy_cent,
+        "tres_puntos_extremos": dy_3pts,
+        "numpy": dy_np,
+        "dispersion": dispersion,
+        "dentro_umbral": dentro_umbral,
+    }
+    return dy_final, info
