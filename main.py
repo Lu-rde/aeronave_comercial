@@ -1,6 +1,7 @@
 import numpy as np
 from math_utils import resolver_con_consenso
 from physics import calcular_viento_altura_decision
+from physics import calcular_distancia_frenado
 
 # ==============================================================================
 # CARGA DE DATOS DE TELEMETRÍA (TEMA 4)
@@ -88,3 +89,24 @@ print("=============================================================")
 print(f"Altitud de decisión (DH): {altitud_decision:.1f} m")
 print(f"Velocidad del viento cruzado estimada: {v_viento_dh:.2f} m/s ({v_viento_dh * 1.94384:.2f} kt)")
 print("Interpretación: El viento cruzado a 60 m se sitúa dentro de los márgenes operativos seguros de aproximación.")
+
+# ==============================================================================
+# DATOS DE PARTIDA: DINÁMICA DE FRENADO[cite: 11]
+# ==============================================================================
+tiempo_frenado = np.linspace(0, 35, 1000)  # [s][cite: 11]
+velocidad_frenado = 70.0 * np.exp(-0.04 * tiempo_frenado) - 1.2 * tiempo_frenado  # [m/s][cite: 11]
+velocidad_frenado[velocidad_frenado < 0] = 0  #[cite: 11]
+
+# ==============================================================================
+# APARTADO 4: INTEGRACIÓN NUMÉRICA (DISTANCIA DE PISTA CONSUMIDA) [cite: 12]
+# ==============================================================================
+# El cálculo con trapecio, Simpson, NumPy y la dispersión van por dentro
+distancia_pista_m, info_pista = calcular_distancia_frenado(tiempo_frenado, velocidad_frenado)
+
+print("=============================================================")
+print("--- INTEGRACIÓN NUMÉRICA: DISTANCIA DE PISTA CONSUMIDA ---")
+print("=============================================================")
+print(f"Distancia de frenado total (S): {distancia_pista_m:.2f} m ({distancia_pista_m / 1000:.2f} km)")
+print("Interpretación: Distancia de roll-out coherente con una aeronave comercial que frena desde ~70 m/s.")
+
+i
