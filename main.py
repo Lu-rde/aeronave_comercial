@@ -140,3 +140,19 @@ if info_desacel["supera_confort"]:
     print("Interpretación: Se supera ligeramente el umbral de 0.3g en el toque inicial, aunque dentro de márgenes seguros de frenado.")
 else:
     print("Interpretación: La desaceleración se mantiene dentro del límite de confort de 0.3g durante toda la carrera de frenado.")
+
+from physics import calcular_tiempo_rodaje
+
+# ==============================================================================
+# APARTADO 6: ECUACIÓN NO LINEAL (INSTANTE DE VELOCIDAD DE RODAJE) (V_taxi = 15 m/s)
+# ==============================================================================
+# Newton-Raphson, bisección, NumPy y control de dispersión se ejecutan por dentro
+v_taxi = 15.0  # [m/s] (~29.16 kt)
+t_taxi, info_taxi = calcular_tiempo_rodaje(v_taxi=v_taxi, t0=10.0)
+
+print("=============================================================")
+print("--- ECUACIÓN NO LINEAL: INSTANTE DE VELOCIDAD DE RODAJE ---")
+print("=============================================================")
+print(f"Velocidad objetivo de rodaje (V_taxi): {v_taxi:.2f} m/s ({v_taxi * 1.94384:.2f} kt)")
+print(f"Instante alcanzado (t_taxi):           {t_taxi:.2f} s tras el touchdown")
+print("Interpretación: El avión alcanza la velocidad segura de abandono de pista en ~16.8 s, antes de detenerse por completo.")

@@ -565,3 +565,109 @@ def derivar_con_consenso(y, x, tol_disp=1e-2):
         "dentro_umbral": dentro_umbral,
     }
     return dy_final, info
+
+# ==============================================================================
+# APARTADO 6: BÚSQUEDA DE RAÍCES 1D (NEWTON-RAPHSON, BISECCIÓN VECTORIZADA Y NUMPY)
+# ==============================================================================
+
+def my_newton(f, df, x0, tol=1e-9, max_iter=100):
+    """
+    Método de Newton-Raphson para resolver f(x) = 0 partiendo de la semilla x0.
+    (Único bucle while autorizado expresamente por el enunciado).
+    """
+    x = float(x0)
+    it = 0
+
+    while it < max_iter:
+        fx = float(f(x))
+        if abs(fx) < tol:
+            return x
+
+        dfx = float(df(x))
+        if np.isclose(dfx, 0.0):
+            raise ZeroDivisionError("Derivada nula en Newton-Raphson.")
+
+        x_nuevo = x - fx / dfx
+        if abs(x_nuevo - x) < tol:
+            return float(x_nuevo)
+
+        x = x_nuevo
+        it += 1
+
+    return float(x)
+
+
+def my_biseccion(f, a, b, n_subdiv=100000):
+    """
+    Búsqueda de raíz en [a, b] por cambio de signo y punto medio de forma 100 % vectorizada
+    (sin bucles for/while): subdivide [a, b] y toma el punto medio del intervalo donde f cambia de signo.
+    """
+    a, b = float(a), float(b)
+    if float(f(a)) * float(f(b)) > 0:
+        raise ValueError("El intervalo [a, b] no encierra un cambio de signo.")
+
+    # Malla densa sobre [a, b] para localizar el subintervalo exacto sin iteraciones en Python
+    grid = np.linspace(a, b, n_subdiv + 1)
+    vals = f(grid)
+
+    # Localizamos el primer índice donde cambia el signo entre grid[i] y grid[i+1]
+    cambios = np.where(vals[:-1] * vals[1:] <= 0)[0]
+    if len(cambios) == 0:
+        raise ValueError("No se detectó cambio de signo en la malla.")
+
+    idx = int(cambios[0])
+    # Punto medio del subintervalo [grid[idx], grid[idx+1]] (paso final de bisección)
+    return float(0.5 * (grid[idx] + grid[idx + 1]))
+
+
+def raices_numpy(f, a, b, n_puntos=100000):
+    """
+    Búsqueda de raíz en [a, b] usando vectorización de NumPy e interpolación lineal
+    local (secante en el subintervalo de cambio de signo).
+    """
+    grid = np.linspace(float(a), float(b), n_puntos)
+    vals = f(grid)
+
+    cambios = np.where(vals[:-1] * vals[1:] <= 0)[0]
+    if len(cambios) == 0:
+        raise ValueError("No se encontró raíz en el intervalo dado.")
+
+    idx = int(cambios[0])
+    x1, x2 = grid[idx], grid[idx + 1]
+    y1, y2 = vals[idx], vals[idx + 1]
+
+    if np.isclose(y2 - y1, 0.0):
+        return float(x1)
+
+    # Interpolación lineal inversa (corte con el eje y = 0 entre x1 y x2)
+    return float(x1 - y1 * (x2 - x1) / (y2 - y1))
+
+
+def resolver_raiz_con_consenso(f, df, x0, a, b, tol_disp=1e-4):
+    """
+    Calcula la raíz de f(x) = 0 con my_newton, my_biseccion y raices_numpy,
+    evalúa la dispersión máxima por dentro y devuelve (raiz_final, info).
+    """
+    r_newton = my_newton(f, df, x0)
+    r_bisec = my_biseccion(f, a, b)
+    r_numpy = raices_numpy(f, a, b)
+
+    raices = np.array([r_newton, r_bisec, r_numpy], dtype=float)
+    dispersion = float(np.ptp(raices))
+
+    if dispersion <= tol_disp:
+        raiz_final = float(np.mean(raices))
+        dentro_umbral = True
+    else:
+        # Priorizamos Newton-Raphson por su convergencia cuadrática en funciones suaves
+        raiz_final = r_newton
+        dentro_umbral = False
+
+    info = {
+        "newton": r_newton,
+        "biseccion": r_bisec,
+        "numpy": r_numpy,
+        "dispersion": dispersion,
+        "dentro_umbral": dentro_umbral,
+    }
+    return raiz_final, info

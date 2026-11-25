@@ -2,6 +2,7 @@ import numpy as np
 from math_utils import interpolar_con_consenso
 from math_utils import derivar_con_consenso
 from math_utils import integrar_con_consenso
+from math_utils import resolver_raiz_con_consenso
 
 def calcular_viento_altura_decision(altitudes_viento, velocidad_viento, altitud_decision=60.0):
     """
@@ -52,3 +53,36 @@ def calcular_perfil_desaceleracion(tiempo_frenado, velocidad_frenado, g=9.81, to
         "info_numerica": info_deriv,
     }
     return aceleracion, resumen_fisico
+
+
+
+def velocidad_frenado_analitica(t):
+    """
+    Perfil analítico de velocidad durante el frenado: V(t) = 70*exp(-0.04*t) - 1.2*t [m/s].
+    """
+    return 70.0 * np.exp(-0.04 * t) - 1.2 * t
+
+
+def derivada_velocidad_frenado(t):
+    """
+    Derivada analítica de la velocidad (aceleración): dV/dt = -2.8*exp(-0.04*t) - 1.2 [m/s^2].
+    """
+    return -2.8 * np.exp(-0.04 * t) - 1.2
+
+
+def calcular_tiempo_rodaje(v_taxi=15.0, t0=10.0, t_min=0.0, t_max=35.0):
+    """
+    Calcula el instante t_taxi [s] en el que la aeronave alcanza la velocidad segura
+    de rodaje (V_taxi = 15 m/s) resolviendo f(t) = V(t) - V_taxi = 0.
+    """
+    f = lambda t: velocidad_frenado_analitica(t) - v_taxi
+    df = lambda t: derivada_velocidad_frenado(t)
+
+    t_taxi, info_raiz = resolver_raiz_con_consenso(
+        f=f,
+        df=df,
+        x0=t0,
+        a=t_min,
+        b=t_max,
+    )
+    return t_taxi, info_raiz
