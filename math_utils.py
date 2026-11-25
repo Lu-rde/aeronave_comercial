@@ -369,3 +369,106 @@ def interpolar_con_consenso(x_tab, y_tab, x_eval, tol_disp=0.5):
         "dentro_umbral": dentro_umbral,
     }
     return val_final, info
+
+# ==============================================================================
+# APARTADO 4: INTEGRACIÓN NUMÉRICA 1D (TRAPECIO, SIMPSON Y NUMPY)
+# ==============================================================================
+
+def my_trapecio(y, x):
+    """
+    Regla del trapecio compuesta 100 % vectorizada (soporta espaciado uniforme o no uniforme).
+    Integra y(x) respecto a x sin usar bucles.
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+
+    if len(x) < 2 or len(x) != len(y):
+        raise ValueError("x e y deben tener la misma longitud y al menos 2 puntos.")
+
+    # Anchura de cada subintervalo: dx[i] = x[i+1] - x[i]
+    dx = np.diff(x)
+    # Altura media en cada subintervalo: 0.5 * (y[i] + y[i+1])
+    altura_media = 0.5 * (y[:-1] + y[1:])
+
+    return float(np.sum(altura_media * dx))
+
+
+def my_simpson(y, x):
+    """
+    Regla de Simpson compuesta 100 % vectorizada para malla equiespaciada (o casi uniforme).
+    Si el número de subintervalos es impar, combina Simpson en los subintervalos pares
+    y añade el último tramo por trapecio, todo de forma vectorial y sin bucles.
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+    n_puntos = len(x)
+
+    if n_puntos < 2 or n_puntos != len(y):
+        raise ValueError("x e y deben tener la misma longitud y al menos 2 puntos.")
+    if n_puntos == 2:
+        return my_trapecio(y, x)
+
+    n_subintervalos = n_puntos - 1
+    dx_arr = np.diff(x)
+    h = float(np.mean(dx_arr))
+
+    # Si hay un número impar de subintervalos, reservamos el último para trapecio vectorial
+    if n_subintervalos % 2 == 1:
+        idx_fin_simpson = n_puntos - 1  # Último índice incluido en Simpson (par -> n_subintervalos - 1 tramos)
+        tramo_extra = 0.5 * (y[-2] + y[-1]) * (x[-1] - x[-2])
+    else:
+        idx_fin_simpson = n_puntos
+        tramo_extra = 0.0
+
+    # Pesos vectoriales de Simpson: [1, 4, 2, 4, 2, ..., 4, 1]
+    pesos = np.full(idx_fin_simpson, 2.0, dtype=float)
+    pesos[1:-1:2] = 4.0  # Índices impares interiores multiplican por 4
+    pesos[0] = 1.0
+    pesos[-1] = 1.0
+
+    integral_simpson = (h / 3.0) * float(np.dot(pesos, y[:idx_fin_simpson]))
+    return integral_simpson + float(tramo_extra)
+
+
+def integracion_numpy(y, x):
+    """
+    Integración numérica de y(x) respecto a x utilizando NumPy.
+    """
+    y = np.asarray(y, dtype=float).ravel()
+    x = np.asarray(x, dtype=float).ravel()
+
+    # np.trapezoid está disponible en versiones recientes de NumPy; np.trapz en anteriores
+    if hasattr(np, "trapezoid"):
+        return float(np.trapezoid(y, x))
+    return float(np.trapz(y, x))
+
+
+def integrar_con_consenso(y, x, tol_disp=1e-2):
+    """
+    Calcula la integral de y(x) con my_trapecio, my_simpson y NumPy, evalúa la
+    dispersión máxima entre métodos por dentro y devuelve (valor_final, info).
+    """
+    val_trap = my_trapecio(y, x)
+    val_simp = my_simpson(y, x)
+    val_np = integracion_numpy(y, x)
+
+    valores = np.array([val_trap, val_simp, val_np], dtype=float)
+    dispersion = float(np.ptp(valores))  # max - min entre los tres métodos
+
+    if dispersion <= tol_disp:
+        val_final = float(np.mean(valores))
+        dentro_umbral = True
+    else:
+        # Simpson tiene mayor orden en funciones suaves; si supera tolerancia, lo priorizamos
+        val_final = val_simp
+        dentro_umbral = False
+
+    info = {
+        "trapecio": val_trap,
+        "simpson": val_simp,
+        "numpy": val_np,
+        "dispersion": dispersion,
+        "dentro_umbral": dentro_umbral,
+    }
+    return val_final, info
+

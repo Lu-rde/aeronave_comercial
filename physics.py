@@ -12,3 +12,15 @@ def calcular_viento_altura_decision(altitudes_viento, velocidad_viento, altitud_
         altitud_decision,
     )
     return v_dh, info_viento
+
+def calcular_distancia_frenado(tiempo_frenado, velocidad_frenado, tol_disp=1e-2):
+    """
+    Calcula la distancia total de pista consumida S = integral(V(t) dt) [m]
+    desde el touchdown hasta la detención de la aeronave[cite: 11, 12].
+    """
+    distancia_m, info_integral = integrar_con_consenso(
+        velocidad_frenado,
+        tiempo_frenado,
+        tol_disp=tol_disp,
+    )
+    return distancia_m, info_integral
