@@ -3,6 +3,8 @@ from math_utils import resolver_con_consenso
 from physics import calcular_viento_altura_decision
 from physics import calcular_distancia_frenado
 from physics import calcular_perfil_desaceleracion
+from dashboard_gui import ejecutar_dashboard
+
 
 # ==============================================================================
 # CARGA DE DATOS DE TELEMETRÍA (TEMA 4)
@@ -156,3 +158,9 @@ print("=============================================================")
 print(f"Velocidad objetivo de rodaje (V_taxi): {v_taxi:.2f} m/s ({v_taxi * 1.94384:.2f} kt)")
 print(f"Instante alcanzado (t_taxi):           {t_taxi:.2f} s tras el touchdown")
 print("Interpretación: El avión alcanza la velocidad segura de abandono de pista en ~16.8 s, antes de detenerse por completo.")
+
+# ==============================================================================
+# CÓDIGO DE EJECUCIÓN DEL DASHBOARD
+# ==============================================================================
+if __name__ == "__main__":
+    ejecutar_dashboard()

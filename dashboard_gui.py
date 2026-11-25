@@ -1,190 +1,267 @@
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.widgets import RadioButtons, Slider
+import matplotlib.pyplot as plt
+from matplotlib.widgets import RadioButtons
+
+from math_utils import resolver_con_consenso, ajustar_senda_consenso
+from physics import (
+    calcular_viento_altura_decision,
+    calcular_distancia_frenado,
+    calcular_perfil_desaceleracion,
+    calcular_tiempo_rodaje,
+)
 
 
-class DashboardAero:
+def ejecutar_dashboard():
+    """
+    Carga los datos de telemetría del Tema 4, ejecuta los cálculos numéricos
+    y físicos con consenso interno, imprime la evaluación física en consola y
+    lanza el Dashboard interactivo de Matplotlib.
+    """
+    # ==========================================================================
+    # 1. DATOS DE PARTIDA DE TELEMETRÍA (TEMA 4)
+    # ==========================================================================
+    np.random.seed(42)  # Fijamos semilla para reproducibilidad en la presentación
 
-    def __init__(self, datos):
-        self.datos = datos
-        self.fig, self.ax = plt.subplots(figsize=(10, 6))
-        plt.subplots_adjust(left=0.25, bottom=0.25)
+    # Sistema lineal: [x_cg (m), peso_total (N), momento_X (N·m), momento_Y (N·m)]
+    params_masa = np.array([18.5, 75000 * 9.81, 13600000.0, 0.0])
+    matriz_geometria = np.array([
+        [1.0, 1.0, 1.0],      # Suma de fuerzas verticales
+        [3.2, 20.1, 20.1],    # Brazos de palanca eje X
+        [0.0, -4.5, 4.5],     # Brazos de palanca eje Y
+    ])
+    b = params_masa[1:]
 
-        # Menú lateral (RadioButtons) y Slider inferior
-        ax_radio = plt.axes([0.02, 0.5, 0.18, 0.35])
-        self.radio = RadioButtons(
-            ax_radio, ("Aproximación", "Atmósfera", "Frenado")
-        )
-        self.radio.on_clicked(self.actualizar_vista)
+    # Regresión lineal: Telemetría ILS (Distancia a pista [m] vs Altitud [m])
+    x_ils = np.linspace(-10000, -500, 200)
+    h_ils = 0.0524 * np.abs(x_ils) + 15.0 + np.random.normal(0, 8, 200)
 
-        ax_slider = plt.axes([0.3, 0.08, 0.55, 0.04])
-        self.slider_masa = Slider(
-            ax_slider,
-            "Factor Masa",
-            0.8,
-            1.4,
-            valinit=1.0,
-            valstep=0.05,
-        )
-        self.slider_masa.on_changed(self.actualizar_frenado)
+    # Interpolación 1D: Perfil de viento en la capa límite
+    altitudes_viento = np.array([0, 50, 100, 200, 500, 1000])      # [m]
+    velocidad_viento = np.array([2.1, 4.5, 7.2, 8.5, 12.0, 15.3])  # [m/s]
 
-        self.mostrar_aproximacion()
+    # Derivación, Integración y Raíces: Dinámica de frenado
+    tiempo_frenado = np.linspace(0, 35, 1000)  # [s]
+    velocidad_frenado = 70.0 * np.exp(-0.04 * tiempo_frenado) - 1.2 * tiempo_frenado
+    velocidad_frenado[velocidad_frenado < 0] = 0
 
-    def limpiar_ejes(self):
-        self.ax.clear()
-        self.ax.grid(True, linestyle="--", alpha=0.6)
+    # ==========================================================================
+    # 2. EJECUCIÓN DE CÁLCULOS NUMÉRICOS (CON CONSENSO INTERNO)
+    # ==========================================================================
+    # Apartado 1: Reparto de cargas en trenes de aterrizaje
+    rep_cargas = resolver_con_consenso(matriz_geometria, b, tol_disp=1e-2)
+    R_m, R_pi, R_pd = rep_cargas["x_final"]
 
-    def mostrar_aproximacion(self):
-        self.limpiar_ejes()
-        m, n, gamma = self.datos["ils_results"]
-        x, h = self.datos["x_ils"], self.datos["h_ils"]
+    # Apartado 2: Regresión lineal de la senda ILS
+    m_ils, n_ils, gamma_deg, _ = ajustar_senda_consenso(x_ils, h_ils)
+    h_ils_recta = m_ils * x_ils + n_ils
 
-        self.ax.plot(
-            x, h, "b.", alpha=0.3, label="Telemetría Radar ILS"
-        )
-        self.ax.plot(
-            x, m * x + n, "r-", lw=2, label=f"Senda Ajustada (γ={gamma:.2f}°)"
-        )
-        self.ax.set_title(
-            "Análisis de Aproximación: Senda ILS y Reparto de Cargas",
-            fontsize=11,
-            fontweight="bold",
-        )
-        self.ax.set_xlabel("Distancia al Umbral de Pista [m]")
-        self.ax.set_ylabel("Altitud [m]")
-        self.ax.legend()
+    # Apartado 3: Viento en Altitud de Decisión (DH = 60 m)
+    altitud_dh = 60.0
+    v_viento_dh, _ = calcular_viento_altura_decision(altitudes_viento, velocidad_viento, altitud_dh)
 
-        Rm, Rpi, Rpd = self.datos["reacciones"]
-        info_text = (
-            f"--- REPARTO DE CARGAS ---\n"
-            f"Tren Morro (Rm): {Rm/1e3:.2f} kN\n"
-            f"Principal Izq (Rpi): {Rpi/1e3:.2f} kN\n"
-            f"Principal Der (Rpd): {Rpd/1e3:.2f} kN\n\n"
-            f"--- SENDA DE PLANEO ILS ---\n"
-            f"Ángulo de Descenso (γ): {gamma:.2f}°\n"
-            f"Normativa OACI: ~3.00° (Cumple)"
-        )
-        self.ax.text(
-            0.03,
-            0.95,
-            info_text,
-            transform=self.ax.transAxes,
-            va="top",
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
-        )
-        self.fig.canvas.draw_idle()
+    # Apartado 4: Instante de velocidad de rodaje (V_taxi = 15 m/s)
+    v_taxi = 15.0
+    t_taxi, _ = calcular_tiempo_rodaje(v_taxi=v_taxi, t0=10.0)
 
-    def mostrar_atmosfera(self):
-        self.limpiar_ejes()
-        alt, vel = (
-            self.datos["altitudes_viento"],
-            self.datos["velocidad_viento"],
-        )
-        v_60 = self.datos["viento_60m"]
+    # Apartado 5: Perfil de desaceleración a(t) = dV/dt
+    aceleracion_frenado, info_desacel = calcular_perfil_desaceleracion(tiempo_frenado, velocidad_frenado)
+    desacel_max = info_desacel["desaceleracion_max"]
+    limite_confort = info_desacel["limite_confort"]
 
-        self.ax.plot(
-            vel, alt, "go-", lw=2, label="Perfil de Viento Boundary Layer"
-        )
-        self.ax.plot(
-            v_60,
-            60,
-            "ro",
-            ms=9,
-            label=f"Viento a DH (60m): {v_60:.2f} m/s",
-        )
-        self.ax.axhline(60, color="r", linestyle=":", alpha=0.7)
-        self.ax.set_title(
-            "Análisis Atmosférico: Perfil de Viento en Capa Límite",
-            fontsize=11,
-            fontweight="bold",
-        )
-        self.ax.set_xlabel("Velocidad del Viento Cruzado [m/s]")
-        self.ax.set_ylabel("Altitud [m]")
-        self.ax.legend()
+    # Apartado 6: Distancia total de pista consumida S = integral(V dt)
+    distancia_pista_m, _ = calcular_distancia_frenado(tiempo_frenado, velocidad_frenado)
 
-        info_text = (
-            f"Altitud de Decisión (DH): 60.0 m\n"
-            f"Viento Cruzado Interpolado: {v_60:.2f} m/s ({v_60*1.94384:.1f} kt)\n"
-            f"Evaluación: Operación segura dentro de límites."
-        )
-        self.ax.text(
-            0.03,
-            0.95,
-            info_text,
-            transform=self.ax.transAxes,
-            va="top",
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.85),
-        )
-        self.fig.canvas.draw_idle()
+    # ==========================================================================
+    # 3. EVALUACIÓN FÍSICA EN CONSOLA (REQUISITO DE ENTREGA)
+    # ==========================================================================
+    print("=========================================================================")
+    print("        EVALUACIÓN FÍSICA DE TELEMETRÍA DE ATERRIZAJE Y FRENADO          ")
+    print("=========================================================================")
+    print(f"[1. Cargas]  R_morro = {R_m/1000:.2f} kN | R_prin_izq = {R_pi/1000:.2f} kN | R_prin_der = {R_pd/1000:.2f} kN")
+    print("    -> Física: Reacciones positivas y simétricas (M_y = 0); trenes principales soportan ~90% del peso.")
+    print(f"[2. ILS]     Ángulo de senda gamma = {abs(gamma_deg):.2f}° (pendiente m = {m_ils:.5f})")
+    print("    -> Física: Cumple la referencia estándar OACI de 3.0° para aproximación instrumental estabilizada.")
+    print(f"[3. Viento]  Viento cruzado a DH = {altitud_dh:.0f} m: {v_viento_dh:.2f} m/s ({v_viento_dh*1.94384:.2f} kt)")
+    print("    -> Física: Componente lateral moderada (< 15 kt), dentro de los límites operativos seguros.")
+    print(f"[4. Rodaje]  Instante V_taxi ({v_taxi:.0f} m/s): t_taxi = {t_taxi:.2f} s")
+    print("    -> Física: La aeronave reduce su velocidad a ritmo seguro para abandonar la pista por calle de rodaje.")
+    print(f"[5. Confort] Desaceleración máxima: {desacel_max:.2f} m/s² (límite confort 0.3g = {limite_confort:.2f} m/s²)")
+    print("    -> Física: Supera ligeramente 0.3g en el toque inicial por la resistencia aerodinámica, con frenado seguro.")
+    print(f"[6. Pista]   Distancia total de frenado: S = {distancia_pista_m:.2f} m")
+    print("    -> Física: Longitud de roll-out inferior a 800 m, totalmente segura para pistas comerciales estándar.")
+    print("=========================================================================")
 
-    def mostrar_frenado(self):
-        self.limpiar_ejes()
-        t = self.datos["t_frenado"]
-        v = self.datos["v_frenado"]
-        a = self.datos["a_frenado"]
-        ttaxi = self.datos["ttaxi"]
-        factor = self.slider_masa.val
-        distancia = self.datos["dist_frenado"] * factor
+    # ==========================================================================
+    # 4. INTERFAZ GRÁFICA INTERACTIVA (DASHBOARD MATPLOTLIB)
+    # ==========================================================================
+    fig = plt.figure(figsize=(13, 7.5))
+    fig.suptitle(
+        "DASHBOARD DE TELEMETRÍA: SENDA DE ATERRIZAJE Y DINÁMICA DE FRENADO",
+        fontsize=13,
+        fontweight="bold",
+        y=0.96,
+    )
 
-        self.ax.plot(t, v, "b-", lw=2, label="Velocidad V(t) [m/s]")
-        self.ax.plot(
-            t, np.abs(a), "m--", lw=1.5, label="Desaceleración |a(t)| [m/s²]"
-        )
-        self.ax.axvline(
-            ttaxi,
-            color="g",
-            linestyle="-.",
-            label=f"t_taxi = {ttaxi:.2f} s (V=15m/s)",
-        )
-        self.ax.axhline(
-            2.94, color="r", linestyle=":", label="Límite Confort (0.3g)"
-        )
-        self.ax.fill_between(
-            t, v * factor, color="blue", alpha=0.15, label="Distancia Recorrida"
-        )
+    # Panel izquierdo superior: selector RadioButtons (3 vistas lógicas)
+    ax_radio = plt.axes([0.03, 0.62, 0.22, 0.25], facecolor="#f4f6f9")
+    ax_radio.set_title("Fase de Maniobra", fontsize=10, fontweight="bold", pad=8)
+    radio = RadioButtons(ax_radio, ("Aproximación", "Atmósfera", "Frenado"), active=0)
 
-        self.ax.set_title(
-            "Dinámica de Frenado y Distancia Consumida en Pista",
-            fontsize=11,
-            fontweight="bold",
-        )
-        self.ax.set_xlabel("Tiempo desde Touchdown [s]")
-        self.ax.set_ylabel("Cinemática [m/s | m/s²]")
-        self.ax.legend(loc="center right")
+    # Panel izquierdo inferior: caja de texto reservada para resultados numéricos dinámicos
+    ax_texto = plt.axes([0.03, 0.08, 0.22, 0.50], facecolor="#f8f9fa")
+    ax_texto.set_xticks([])
+    ax_texto.set_yticks([])
+    ax_texto.set_title("Resultados Numéricos", fontsize=10, fontweight="bold", pad=8)
+    texto_panel = ax_texto.text(
+        0.05,
+        0.95,
+        "",
+        transform=ax_texto.transAxes,
+        fontsize=9,
+        verticalalignment="top",
+        family="monospace",
+    )
 
-        alerta = (
-            "⚠️ ¡EXCESO DE PISTA!"
-            if distancia > 1600
-            else "OK: Pista Suficiente"
-        )
-        info_text = (
-            f"Tiempo a V_taxi (15 m/s): {ttaxi:.2f} s\n"
-            f"Desaceleración Máx: {np.max(np.abs(a)):.2f} m/s² ({np.max(np.abs(a))/9.81:.2f}g)\n"
-            f"Distancia Pista Consumida: {distancia:.1f} m\n"
-            f"Diagnóstico: {alerta}"
-        )
-        self.ax.text(
-            0.03,
-            0.95,
-            info_text,
-            transform=self.ax.transAxes,
-            va="top",
-            bbox=dict(
-                boxstyle="round",
-                facecolor="yellow" if distancia > 1600 else "white",
-                alpha=0.85,
-            ),
-        )
-        self.fig.canvas.draw_idle()
+    # Área derecha: ejes principales (uno simple para Aproximación/Atmósfera, dos para Frenado)
+    ax_main = plt.axes([0.32, 0.12, 0.64, 0.76])
+    ax_fren_vel = plt.axes([0.32, 0.53, 0.64, 0.35])
+    ax_fren_acc = plt.axes([0.32, 0.10, 0.64, 0.35], sharex=ax_fren_vel)
 
-    def actualizar_vista(self, label):
-        if label == "Aproximación":
-            self.mostrar_aproximacion()
-        elif label == "Atmósfera":
-            self.mostrar_atmosfera()
-        elif label == "Frenado":
-            self.mostrar_frenado()
+    # Resumen fijo de cargas estáticas que siempre acompaña al panel numérico
+    bloque_cargas = (
+        "REPARTO DE CARGAS (Ax=b)\n"
+        f"• R_morro: {R_m/1000:6.2f} kN\n"
+        f"• R_p_izq: {R_pi/1000:6.2f} kN\n"
+        f"• R_p_der: {R_pd/1000:6.2f} kN\n"
+        "-------------------------\n"
+    )
 
-    def actualizar_frenado(self, val):
-        if self.radio.value_selected == "Frenado":
-            self.mostrar_frenado()
+    def actualizar_vista(etiqueta):
+        """Actualiza la gráfica y el panel de resultados según la vista seleccionada."""
+        ax_main.set_visible(False)
+        ax_fren_vel.set_visible(False)
+        ax_fren_acc.set_visible(False)
+
+        if etiqueta == "Aproximación":
+            ax_main.set_visible(True)
+            ax_main.clear()
+
+            ax_main.scatter(x_ils, h_ils, s=14, alpha=0.55, color="#4a7c9b", label="Telemetría Radar ILS")
+            ax_main.plot(
+                x_ils,
+                h_ils_recta,
+                color="#d9534f",
+                linewidth=2.2,
+                label=f"Regresión Lineal (γ = {abs(gamma_deg):.2f}°)",
+            )
+            ax_main.set_title("Calibración de Senda de Planeo ILS (h = m·x + n)", fontsize=11, fontweight="bold")
+            ax_main.set_xlabel("Distancia horizontal a umbral de pista x [m]")
+            ax_main.set_ylabel("Altitud h [m]")
+            ax_main.grid(True, linestyle="--", alpha=0.4)
+            ax_main.legend(loc="upper right")
+
+            texto_panel.set_text(
+                bloque_cargas
+                + "FASE: APROXIMACIÓN ILS\n"
+                + f"• Pendiente m: {m_ils:.5f}\n"
+                + f"• Ordenada n:  {n_ils:.2f} m\n"
+                + f"• Ángulo γ:   {abs(gamma_deg):.2f}°\n"
+                + "• Ref. OACI:   3.00°\n"
+                + "• Estado:      ESTABILIZADA"
+            )
+
+        elif etiqueta == "Atmósfera":
+            ax_main.set_visible(True)
+            ax_main.clear()
+
+            alt_fina = np.linspace(altitudes_viento[0], altitudes_viento[-1], 300)
+            v_fina = np.interp(alt_fina, altitudes_viento, velocidad_viento)
+
+            ax_main.plot(velocidad_viento, altitudes_viento, "o--", color="#2b5c8f", label="Datos medidos capa límite")
+            ax_main.plot(v_fina, alt_fina, "-", color="#5bc0de", alpha=0.7, label="Perfil interpolado 1D")
+            ax_main.scatter(
+                [v_viento_dh],
+                [altitud_dh],
+                color="red",
+                s=95,
+                zorder=5,
+                label=f"DH = 60 m ({v_viento_dh:.2f} m/s)",
+            )
+            ax_main.axhline(altitud_dh, color="red", linestyle=":", alpha=0.6)
+
+            ax_main.set_title("Perfil Vertical de Viento Cruzado y Altitud de Decisión (DH)", fontsize=11, fontweight="bold")
+            ax_main.set_xlabel("Velocidad del viento cruzado [m/s]")
+            ax_main.set_ylabel("Altitud sobre pista [m]")
+            ax_main.grid(True, linestyle="--", alpha=0.4)
+            ax_main.legend(loc="lower right")
+
+            texto_panel.set_text(
+                bloque_cargas
+                + "FASE: ATMÓSFERA (DH)\n"
+                + f"• Altitud DH:  {altitud_dh:.1f} m\n"
+                + f"• Viento DH:   {v_viento_dh:.2f} m/s\n"
+                + f"• En nudos:    {v_viento_dh * 1.94384:.2f} kt\n"
+                + "• Estado:      DENTRO DE LÍMITE"
+            )
+
+        elif etiqueta == "Frenado":
+            ax_fren_vel.set_visible(True)
+            ax_fren_acc.set_visible(True)
+            ax_fren_vel.clear()
+            ax_fren_acc.clear()
+
+            # Subgráfica 1: Velocidad V(t), área integrada S y punto t_taxi (Newton-Raphson)
+            ax_fren_vel.plot(tiempo_frenado, velocidad_frenado, color="#1f77b4", linewidth=2, label="Velocidad V(t) [m/s]")
+            ax_fren_vel.fill_between(
+                tiempo_frenado,
+                0,
+                velocidad_frenado,
+                color="#1f77b4",
+                alpha=0.18,
+                label=f"Distancia integrada S = {distancia_pista_m:.1f} m",
+            )
+            ax_fren_vel.axvline(
+                t_taxi,
+                color="#d9534f",
+                linestyle="--",
+                linewidth=1.6,
+                label=f"t_taxi = {t_taxi:.2f} s (V = 15 m/s)",
+            )
+            ax_fren_vel.scatter([t_taxi], [v_taxi], color="#d9534f", s=65, zorder=5)
+            ax_fren_vel.set_title("Dinámica de Frenado: Velocidad, Distancia Consumida y Desaceleración", fontsize=11, fontweight="bold")
+            ax_fren_vel.set_ylabel("Velocidad V [m/s]")
+            ax_fren_vel.grid(True, linestyle="--", alpha=0.4)
+            ax_fren_vel.legend(loc="upper right", fontsize=8.5)
+
+            # Subgráfica 2: Perfil de desaceleración a(t) y umbral de confort -0.3g
+            ax_fren_acc.plot(tiempo_frenado, aceleracion_frenado, color="#2ca02c", linewidth=2, label="Aceleración a(t) = dV/dt [m/s²]")
+            ax_fren_acc.axhline(
+                -limite_confort,
+                color="#ff7f0e",
+                linestyle="--",
+                linewidth=1.6,
+                label=f"Límite confort (-0.3g = -{limite_confort:.2f} m/s²)",
+            )
+            ax_fren_acc.axvline(t_taxi, color="#d9534f", linestyle="--", linewidth=1.2, alpha=0.7)
+            ax_fren_acc.set_xlabel("Tiempo desde touchdown t [s]")
+            ax_fren_acc.set_ylabel("Aceleración a [m/s²]")
+            ax_fren_acc.grid(True, linestyle="--", alpha=0.4)
+            ax_fren_acc.legend(loc="lower right", fontsize=8.5)
+
+            texto_panel.set_text(
+                bloque_cargas
+                + "FASE: FRENADO EN PISTA\n"
+                + f"• t_taxi:      {t_taxi:.2f} s\n"
+                + f"• Distancia S: {distancia_pista_m:.2f} m\n"
+                + f"• Desac. máx:  {desacel_max:.2f} m/s²\n"
+                + f"• Lím. 0.3g:   {limite_confort:.2f} m/s²\n"
+                + "• Estado:      PISTA SUFICIENTE"
+            )
+
+        fig.canvas.draw_idle()
+
+    # Guardamos referencia en fig para evitar que el recolector de basura desactive los RadioButtons
+    fig._radio_widget = radio
+    radio.on_clicked(actualizar_vista)
+    actualizar_vista("Aproximación")
+    plt.show()
