@@ -86,3 +86,30 @@ def calcular_tiempo_rodaje(v_taxi=15.0, t0=10.0, t_min=0.0, t_max=35.0):
         b=t_max,
     )
     return t_taxi, info_raiz
+
+# ==============================================================================
+# [EXTRA] MARGEN OPERATIVO DE PISTA DESDE ALTURA DE DECISIÓN (DH)
+# Definición: Combina la distancia horizontal recorrida en descenso desde la
+# altura de decisión (DH = 60 m) con el ángulo de senda ILS más la distancia
+# de frenado integrada S, comparándolo con una pista de referencia (2800 m)
+# para comprobar cuánta longitud de pista sobra con seguridad.
+# ==============================================================================
+def evaluar_margen_pista_total(altitud_dh, gamma_deg, distancia_frenado_m, longitud_pista_ref=2800.0):
+    """
+    Integra las fases de aproximación y frenado: calcula la distancia horizontal
+    desde la Altitud de Decisión (DH) hasta el umbral/toque aproximado más la
+    distancia de roll-out S, y determina el margen libre sobre una pista estándar.
+    """
+    ang_rad = np.radians(abs(gamma_deg))
+    dist_aprox_dh = float(altitud_dh / np.tan(ang_rad)) if ang_rad > 0 else 0.0
+    dist_total_estimada = dist_aprox_dh + float(distancia_frenado_m)
+    margen_m = float(longitud_pista_ref - dist_total_estimada)
+    margen_pct = float((margen_m / longitud_pista_ref) * 100.0)
+
+    return {
+        "dist_aprox_dh": dist_aprox_dh,
+        "dist_total_estimada": dist_total_estimada,
+        "longitud_pista_ref": float(longitud_pista_ref),
+        "margen_m": margen_m,
+        "margen_pct": margen_pct,
+    }
